@@ -19,7 +19,7 @@
 
 int main(int /*argc*/, char** /*argv*/)
 {
-    Graphics graphics;
+    trost::Graphics graphics;
 
     graphics.screen = OpenScreenTags(NULL,
                                     SA_Width, 320,
