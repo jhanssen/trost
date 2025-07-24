@@ -1,17 +1,18 @@
 #pragma once
 
 #include "Graphics.h"
+#include "Function.h"
+#include "Vector.h"
 #include <clib/intuition_protos.h>
-#include <tuple>
-#include <functional>
-#include <vector>
+
+namespace trost {
 
 class Messages
 {
 public:
     static Messages* instance();
 
-    ULONG addHandler(ULONG clazz, std::function<void(IntuiMessage*)>&& handler);
+    ULONG addHandler(ULONG clazz, trost::Function<void(IntuiMessage*)>&& handler);
     void removeHandler(ULONG id);
 
     void processMessage(const Graphics* graphics);
@@ -19,8 +20,17 @@ public:
 private:
     Messages() = default;
 
-    std::vector<std::tuple<ULONG, ULONG, std::function<void(IntuiMessage*)>>> mHandlers;
+    struct Entry
+    {
+        ULONG id;
+        ULONG clazz;
+        trost::Function<void(IntuiMessage*)> handler;
+    };
+
+    Vector<Entry> mHandlers;
     ULONG mNextId = 0;
 
     static Messages* sInstance;
 };
+
+} // namespace trost

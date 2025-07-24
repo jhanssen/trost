@@ -1,6 +1,8 @@
 #include "Messages.h"
 #include <clib/exec_protos.h>
 
+using namespace trost;
+
 Messages* Messages::sInstance = nullptr;
 
 Messages* Messages::instance()
@@ -11,17 +13,22 @@ Messages* Messages::instance()
     return sInstance;
 }
 
-ULONG Messages::addHandler(ULONG clazz, std::function<void(IntuiMessage*)>&& handler)
+ULONG Messages::addHandler(ULONG clazz, trost::Function<void(IntuiMessage*)>&& handler)
 {
     ULONG id = mNextId++;
-    mHandlers.emplace_back(id, clazz, std::move(handler));
+    mHandlers.push_back({ id, clazz, std::move(handler) });
     return id;
 }
 
 void Messages::removeHandler(ULONG id)
 {
-    std::remove_if(mHandlers.begin(), mHandlers.end(),
-                   [id](const auto& tup) { return std::get<0>(tup) == id; });
+    const auto sz = mHandlers.size();
+    for (std::size_t i = 0; i < sz; ++i) {
+        if (mHandlers[i].id == id) {
+            mHandlers.remove_at(i);
+            return;
+        }
+    }
 }
 
 void Messages::processMessage(const Graphics* graphics)
@@ -31,11 +38,11 @@ void Messages::processMessage(const Graphics* graphics)
     while (running) {
         WaitPort(graphics->window->UserPort);
         while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(graphics->window->UserPort))) != nullptr) {
-            auto it = mHandlers.begin();
-            const auto end = mHandlers.end();
-            for (; it != end; ++it) {
-                if (std::get<1>(*it) == msg->Class) {
-                    std::get<2>(*it)(msg);
+            const auto sz = mHandlers.size();
+            for (std::size_t i = 0; i < sz; ++i) {
+                auto& entry = mHandlers[i];
+                if (entry.clazz == msg->Class) {
+                    entry.handler(msg);
                     running = false;
                 }
             }
