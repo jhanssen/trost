@@ -13,6 +13,7 @@
 #include <devices/inputevent.h>
 #include <cstdio>
 #include "Graphics.h"
+#include "Renderer.h"
 #include "Input.h"
 
 #define MAX_INPUT 128
@@ -53,11 +54,27 @@ int main(int /*argc*/, char** /*argv*/)
         return 1;
     }
 
+    trost::Renderer::initialize(&graphics);
+
+    auto renderer = trost::Renderer::instance();
+
     // Your drawing logic or other code here
     SetRGB4(&(graphics.screen->ViewPort), 0, 15, 0, 0);
     // set pen color to white
     SetRGB4(&(graphics.screen->ViewPort), 1, 15, 15, 15);
 
+    renderer->addRenderer([](trost::Renderer::Context* ctx) {
+        const auto rp = ctx->rastPort;
+
+        Move(rp, 10, 10);
+        Text(rp, "Hello, World!", 13);
+    });
+
+    for (int n = 0; n < 500; ++n) {
+        renderer->render();
+    }
+
+    /*
     auto rp = graphics.window->RPort;
     SetAPen(rp, 1);
     SetBPen(rp, 0);
@@ -68,6 +85,7 @@ int main(int /*argc*/, char** /*argv*/)
         Text(graphics.window->RPort, input.buffer, input.length);
         Delay(600);
     }
+    */
 
     CloseWindow(graphics.window);
     CloseScreen(graphics.screen);

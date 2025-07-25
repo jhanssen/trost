@@ -34,19 +34,15 @@ void Messages::removeHandler(ULONG id)
 void Messages::processMessage(const Graphics* graphics)
 {
     IntuiMessage* msg;
-    bool running = true;
-    while (running) {
-        WaitPort(graphics->window->UserPort);
-        while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(graphics->window->UserPort))) != nullptr) {
-            const auto sz = mHandlers.size();
-            for (std::size_t i = 0; i < sz; ++i) {
-                auto& entry = mHandlers[i];
-                if (entry.clazz == msg->Class) {
-                    entry.handler(msg);
-                    running = false;
-                }
+    //WaitPort(graphics->window->UserPort);
+    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(graphics->window->UserPort))) != nullptr) {
+        const auto sz = mHandlers.size();
+        for (std::size_t i = 0; i < sz; ++i) {
+            auto& entry = mHandlers[i];
+            if (entry.clazz == msg->Class) {
+                entry.handler(msg);
             }
-            ReplyMsg((struct Message*)msg);
         }
+        ReplyMsg((struct Message*)msg);
     }
 }
