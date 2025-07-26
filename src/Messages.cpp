@@ -5,11 +5,29 @@ using namespace trost;
 
 Messages* Messages::sInstance = nullptr;
 
-Messages* Messages::instance()
+void Messages::initialize(const Graphics* graphics)
+{
+    if (sInstance) {
+        return;
+    }
+
+    sInstance = new Messages();
+    sInstance->mGraphics = graphics;
+    sInstance->mUserPort = graphics->window->UserPort;
+}
+
+void Messages::cleanup()
 {
     if (!sInstance) {
-        sInstance = new Messages();
+        return;
     }
+
+    delete sInstance;
+    sInstance = nullptr;
+}
+
+Messages* Messages::instance()
+{
     return sInstance;
 }
 
@@ -31,10 +49,15 @@ void Messages::removeHandler(ULONG id)
     }
 }
 
-void Messages::processMessages(const Graphics* graphics)
+UBYTE Messages::sigBit() const
+{
+    return mUserPort->mp_SigBit;
+}
+
+void Messages::processMessages()
 {
     IntuiMessage* msg;
-    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(graphics->window->UserPort))) != nullptr) {
+    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(mGraphics->window->UserPort))) != nullptr) {
         const auto sz = mHandlers.size();
         for (std::size_t i = 0; i < sz; ++i) {
             auto& entry = mHandlers[i];
@@ -46,11 +69,11 @@ void Messages::processMessages(const Graphics* graphics)
     }
 }
 
-void Messages::processOneMessage(ULONG clazz, const Graphics* graphics)
+void Messages::processOneMessage(ULONG clazz)
 {
     IntuiMessage* msg;
-    WaitPort(graphics->window->UserPort);
-    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(graphics->window->UserPort))) != nullptr) {
+    WaitPort(mGraphics->window->UserPort);
+    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(mGraphics->window->UserPort))) != nullptr) {
         const auto sz = mHandlers.size();
         for (std::size_t i = 0; i < sz; ++i) {
             auto& entry = mHandlers[i];

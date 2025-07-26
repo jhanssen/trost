@@ -1,6 +1,7 @@
 set(SOURCES
     main.cpp
-    input.cpp
+    Input.cpp
+    App.cpp
     Messages.cpp
     Renderer.cpp)
 

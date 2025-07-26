@@ -10,16 +10,24 @@ namespace trost {
 class Messages
 {
 public:
+    static void initialize(const Graphics* graphics);
+    static void cleanup();
+
     static Messages* instance();
 
     ULONG addHandler(ULONG clazz, trost::Function<void(IntuiMessage*)>&& handler);
     void removeHandler(ULONG id);
 
-    void processMessages(const Graphics* graphics);
-    void processOneMessage(ULONG clazz, const Graphics* graphics);
+    void processMessages();
+    void processOneMessage(ULONG clazz);
+
+    UBYTE sigBit() const;
 
 private:
     Messages() = default;
+
+    const Graphics* mGraphics = nullptr;
+    MsgPort* mUserPort = nullptr;
 
     struct Entry
     {

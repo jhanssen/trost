@@ -3,161 +3,76 @@
 #include <clib/alib_protos.h>
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
-#include <devices/gameport.h>
 #include <cstdio>
-
-extern "C" ExecBase *SysBase;
 
 using namespace trost;
 
 Renderer* Renderer::sInstance = nullptr;
 
-enum JoyDirection {
-    Joy_None,
-    Joy_Left = 0x1,
-    Joy_Right = 0x2,
-    Joy_Up = 0x4,
-    Joy_Down = 0x8,
-};
-
-// x -1 is left, 1 is right
-// y -1 is up,   1 is down
-static const BYTE joyDirectionLookup[3][3] = {
-    // y = -1     0,                 1 (up)
-    { Joy_Left  | Joy_Up, Joy_Left,  Joy_Left  | Joy_Down },  // x = -1
-    { Joy_Down,           Joy_None,  Joy_Up               },  // x =  0
-    { Joy_Right | Joy_Up, Joy_Right, Joy_Right | Joy_Down }   // x = +1
-};
-
-// the following functions are lifted from https://wiki.amigaos.net/wiki/Gameport_Device
-BOOL set_controller_type(BYTE type, struct IOStdReq *game_io_msg)
-{
-    BOOL success = FALSE;
-    BYTE controller_type = 0;
-
-    /* begin critical section
-    ** we need to be sure that between the time we check that the controller
-    ** is available and the time we allocate it, no one else steals it.
-    */
-    Forbid();
-
-    game_io_msg->io_Command = GPD_ASKCTYPE;    /* inquire current status */
-    game_io_msg->io_Flags   = IOF_QUICK;
-    game_io_msg->io_Data    = (APTR)&controller_type; /* put answer in here */
-    game_io_msg->io_Length  = 1;
-    DoIO(reinterpret_cast<IORequest*>(game_io_msg));
-
-    /* No one is using this device unit, let's claim it */
-    if (controller_type == GPCT_NOCONTROLLER)
-    {
-        game_io_msg->io_Command = GPD_SETCTYPE;
-        game_io_msg->io_Flags   = IOF_QUICK;
-        game_io_msg->io_Data    = (APTR)&type;
-        game_io_msg->io_Length  = 1;
-        DoIO(reinterpret_cast<IORequest*>(game_io_msg));
-        success = TRUE;
-    }
-
-    Permit(); /* critical section end */
-    return(success);
-}
-
-void set_trigger_conditions(struct GamePortTrigger *gpt,
-                            struct IOStdReq *game_io_msg)
-{
-    /* trigger on all joystick key transitions */
-    gpt->gpt_Keys   = GPTF_UPKEYS | GPTF_DOWNKEYS;
-    gpt->gpt_XDelta = 1;
-    gpt->gpt_YDelta = 1;
-    /* timeout trigger every TIMEOUT_SECONDS second(s) */
-    gpt->gpt_Timeout = (UWORD)(SysBase->VBlankFrequency) * 10;
-
-    game_io_msg->io_Command = GPD_SETTRIGGER;
-    game_io_msg->io_Flags   = IOF_QUICK;
-    game_io_msg->io_Data    = (APTR)gpt;
-    game_io_msg->io_Length  = (LONG)sizeof(struct GamePortTrigger);
-    DoIO(reinterpret_cast<IORequest*>(game_io_msg));
-}
-
-void flush_buffer(struct IOStdReq *game_io_msg)
-{
-    game_io_msg->io_Command = CMD_CLEAR;
-    game_io_msg->io_Flags   = IOF_QUICK;
-    game_io_msg->io_Data    = NULL;
-    game_io_msg->io_Length  = 0;
-    DoIO(reinterpret_cast<IORequest*>(game_io_msg));
-}
-
-void free_gp_unit(struct IOStdReq *game_io_msg)
-{
-    BYTE type = GPCT_NOCONTROLLER;
-
-    game_io_msg->io_Command = GPD_SETCTYPE;
-    game_io_msg->io_Flags   = IOF_QUICK;
-    game_io_msg->io_Data    = (APTR)&type;
-    game_io_msg->io_Length  = 1;
-    DoIO(reinterpret_cast<IORequest*>(game_io_msg));
-}
-
-void send_read_request(struct InputEvent *game_event,
-                       struct IOStdReq *game_io_msg)
-{
-    game_io_msg->io_Command = GPD_READEVENT;
-    game_io_msg->io_Flags   = 0;
-    game_io_msg->io_Data    = (APTR)game_event;
-    game_io_msg->io_Length  = sizeof(struct InputEvent);
-    SendIO(reinterpret_cast<IORequest*>(game_io_msg));  /* Asynchronous - message will return later */
-}
-
 bool Renderer::initialize()
 {
-    mInputPort = CreatePort("RKM_game_port", 0);
-
-    GamePortTrigger joytrigger;
-    mInputRequest = CreateExtIO(mInputPort, sizeof(IOStdReq));
-    mInputRequest->io_Message.mn_Node.ln_Type = NT_UNKNOWN;
-    if (OpenDevice("gameport.device", 1, mInputRequest, 0) != 0) {
-        DeleteMsgPort(mInputPort);
-        mInputPort = nullptr;
-        printf("Failed to open gameport.device\n");
-        return false;
+    if (sInstance) {
+        return true;
     }
-    if (!set_controller_type(GPCT_ABSJOYSTICK, reinterpret_cast<IOStdReq*>(mInputRequest))) {
-        CloseDevice(reinterpret_cast<IORequest*>(mInputRequest));
-        DeleteMsgPort(mInputPort);
-        mInputPort = nullptr;
-        printf("Failed to acquire joystick\n");
-        return false;
-    }
-    set_trigger_conditions(&joytrigger, reinterpret_cast<IOStdReq*>(mInputRequest));
-    flush_buffer(reinterpret_cast<IOStdReq*>(mInputRequest));
 
-    send_read_request(&mGameEvent, reinterpret_cast<IOStdReq*>(mInputRequest));
-
-    mBuffers[0] = AllocScreenBuffer(mGraphics.screen, nullptr, SB_SCREEN_BITMAP);
-    mBuffers[1] = AllocScreenBuffer(mGraphics.screen, nullptr, SB_COPY_BITMAP);
-    mBuffers[0]->sb_DBufInfo->dbi_UserData1 = reinterpret_cast<APTR>(0);
-    mBuffers[1]->sb_DBufInfo->dbi_UserData1 = reinterpret_cast<APTR>(1);
-
-    InitRastPort(&mRastPorts[0]);
-    mRastPorts[0].BitMap = mBuffers[0]->sb_BitMap;
-
-    InitRastPort(&mRastPorts[1]);
-    mRastPorts[1].BitMap = mBuffers[1]->sb_BitMap;
-
-    mDbufPort = CreateMsgPort();
-    mUserPort = CreateMsgPort();
-
-    mGraphics.window->UserPort = mUserPort;
-    return true;
-}
-
-bool Renderer::initialize(const Graphics* graphics)
-{
     sInstance = new Renderer();
-    sInstance->mGraphics.screen = graphics->screen;
-    sInstance->mGraphics.window = graphics->window;
-    return sInstance->initialize();
+    auto graphics = &sInstance->mGraphics;
+
+    graphics->screen = OpenScreenTags(NULL,
+                                     SA_Width, 320,
+                                     SA_Height, 256,
+                                     SA_Depth, 5,
+                                     SA_Type, CUSTOMSCREEN,
+                                     SA_Title, "Full Screen Program",
+                                     SA_ShowTitle, FALSE,
+                                     SA_Quiet, TRUE,
+                                     TAG_DONE);
+    if (!graphics->screen) {
+        printf("Failed to open screen\n");
+        return 1;
+    }
+
+    graphics->window = OpenWindowTags(NULL,
+                                     WA_Left,        0,
+                                     WA_Top,         0,
+                                     WA_Width,       320,
+                                     WA_Height,      256,
+                                     WA_IDCMP,       IDCMP_RAWKEY,
+                                     WA_Flags,       WFLG_SIMPLE_REFRESH |
+                                     WFLG_BACKDROP |
+                                     WFLG_BORDERLESS |
+                                     WFLG_ACTIVATE,
+                                     WA_CustomScreen,(ULONG)graphics->screen,
+                                     TAG_DONE);
+    if (!graphics->window) {
+        printf("Failed to open window\n");
+        CloseScreen(graphics->screen);
+        return 1;
+    }
+
+    //sInstance->mUserPort = CreateMsgPort();
+    //graphics->window->UserPort = sInstance->mUserPort;
+    sInstance->mUserPort = graphics->window->UserPort;
+
+    // Your drawing logic or other code here
+    SetRGB4(&(graphics->screen->ViewPort), 0, 15, 0, 0);
+    // set pen color to white
+    SetRGB4(&(graphics->screen->ViewPort), 1, 15, 15, 15);
+
+    sInstance->mBuffers[0] = AllocScreenBuffer(graphics->screen, nullptr, SB_SCREEN_BITMAP);
+    sInstance->mBuffers[1] = AllocScreenBuffer(graphics->screen, nullptr, SB_COPY_BITMAP);
+    sInstance->mBuffers[0]->sb_DBufInfo->dbi_UserData1 = reinterpret_cast<APTR>(0);
+    sInstance->mBuffers[1]->sb_DBufInfo->dbi_UserData1 = reinterpret_cast<APTR>(1);
+
+    InitRastPort(&sInstance->mRastPorts[0]);
+    sInstance->mRastPorts[0].BitMap = sInstance->mBuffers[0]->sb_BitMap;
+
+    InitRastPort(&sInstance->mRastPorts[1]);
+    sInstance->mRastPorts[1].BitMap = sInstance->mBuffers[1]->sb_BitMap;
+
+    sInstance->mDbufPort = CreateMsgPort();
+
+    return true;
 }
 
 Renderer* Renderer::instance()
@@ -165,64 +80,36 @@ Renderer* Renderer::instance()
     return sInstance;
 }
 
+const Graphics* Renderer::graphics() const
+{
+    return &mGraphics;
+}
+
+bool Renderer::isWaiting() const
+{
+    return mStatus[mDraw] == RedrawStatus::Wait;
+}
+
+void Renderer::processDbuf()
+{
+    struct Message *dbmsg;
+    while ((dbmsg = GetMsg(mDbufPort))) {
+        ULONG buffer = reinterpret_cast<ULONG>(*(reinterpret_cast<APTR**>(dbmsg + 1)));
+        mStatus[buffer ^ 1] = RedrawStatus::Redraw;
+    }
+}
+
+UBYTE Renderer::sigBit() const
+{
+    return mDbufPort->mp_SigBit;
+}
+
 void Renderer::render()
 {
-    // if there are no handlers, just process messages at refresh rate
-    if (mHandlers.size() == 0) {
-        Messages::instance()->processMessages(&mGraphics);
+    // if there are no handlers or if there's nothing to do, just wait for a refresh
+    if (mHandlers.size() == 0 || mStatus[mDraw] == RedrawStatus::Wait) {
         WaitTOF();
         return;
-    }
-
-    if (mStatus[mDraw] == RedrawStatus::Wait) {
-        const auto sigs = Wait((1 << mDbufPort->mp_SigBit) | (1 << mUserPort->mp_SigBit) | (1 << mInputPort->mp_SigBit));
-        if (sigs & (1 << mDbufPort->mp_SigBit)) {
-            struct Message *dbmsg;
-            while ((dbmsg = GetMsg(mDbufPort))) {
-                ULONG buffer = reinterpret_cast<ULONG>(*(reinterpret_cast<APTR**>(dbmsg + 1)));
-                mStatus[buffer ^ 1] = RedrawStatus::Redraw;
-            }
-        }
-        if (sigs & (1 << mUserPort->mp_SigBit)) {
-            Messages::instance()->processMessages(&mGraphics);
-        }
-        if (sigs & (1 << mInputPort->mp_SigBit)) {
-            printf("input\n");
-            struct Message *imsg;
-            if ((imsg = GetMsg(mInputPort))) {
-                switch (mGameEvent.ie_Code) {
-                case IECODE_LBUTTON:
-                    // fire button pressed
-                    printf("Left button pressed\n");
-                    break;
-                case IECODE_LBUTTON | IECODE_UP_PREFIX:
-                    // fire button released
-                    break;
-                case IECODE_RBUTTON:
-                    // alt button pressed
-                    break;
-                case IECODE_RBUTTON | IECODE_UP_PREFIX:
-                    // alt button released
-                    break;
-                case IECODE_NOBUTTON: {
-                    // check for move
-                    const auto xmove = mGameEvent.ie_X;
-                    const auto ymove = mGameEvent.ie_Y;
-                    if (xmove == 0 && ymove == 0) {
-                        // this might be a timeout
-                        if (mGameEvent.ie_TimeStamp.tv_secs >= (UWORD)(SysBase->VBlankFrequency) * 10) {
-                            break; // timeout, ignore
-                        }
-                    }
-                    auto dir = joyDirectionLookup[xmove + 1][ymove + 1];
-                    printf("Joystick moved: x=%d, y=%d, direction=%d\n", xmove, ymove, dir);
-
-                    break; }
-                }
-            }
-
-            send_read_request(&mGameEvent, reinterpret_cast<IOStdReq*>(mInputRequest));
-        }
     }
 
     if (mStatus[mDraw] == RedrawStatus::Redraw) {
@@ -269,33 +156,45 @@ static void StripIntuiMessages(Window* win)
 
 void Renderer::cleanup()
 {
-    //FreeScreenBuffer(mGraphics.screen, mBuffers[0]);
-    FreeScreenBuffer(mGraphics.screen, mBuffers[1]);
+    auto that = sInstance;
+    if (!that) {
+        return;
+    }
+
+    // wait for all screen buffers to become available
+    while (that->mStatus[0] == RedrawStatus::Wait || that->mStatus[1] == RedrawStatus::Wait) {
+        Wait(1 << that->mDbufPort->mp_SigBit);
+        that->processDbuf();
+    }
+
+    // change screen to show buffer 0
+    while (ChangeScreenBuffer(that->mGraphics.screen, that->mBuffers[0]) == 0) {
+        WaitTOF();
+    }
+
+    // clear any dbuf messages
+    while (GetMsg(that->mDbufPort)) {
+        // just clear the messages
+    }
 
     Forbid();
 
-    StripIntuiMessages(mGraphics.window);
-    mGraphics.window->UserPort = nullptr;
-    ModifyIDCMP(mGraphics.window, 0);
+    ModifyIDCMP(that->mGraphics.window, 0);
+    StripIntuiMessages(that->mGraphics.window);
 
     Permit();
 
-    printf("out.\n");
+    CloseWindow(that->mGraphics.window);
+    CloseScreen(that->mGraphics.screen);
 
-    if (!CheckIO(reinterpret_cast<IORequest*>(mInputRequest))) {
-        AbortIO(reinterpret_cast<IORequest*>(mInputRequest));
-        WaitIO(reinterpret_cast<IORequest*>(mInputRequest));
-    }
+    FreeScreenBuffer(that->mGraphics.screen, that->mBuffers[1]);
+    FreeScreenBuffer(that->mGraphics.screen, that->mBuffers[0]);
 
-    free_gp_unit(reinterpret_cast<IOStdReq*>(mInputRequest));
+    DeleteMsgPort(that->mDbufPort);
+    //DeleteMsgPort(that->mUserPort);
 
-    WaitIO(reinterpret_cast<IORequest*>(mInputRequest));
-
-    CloseDevice(reinterpret_cast<IORequest*>(mInputRequest));
-    DeleteExtIO(reinterpret_cast<IORequest*>(mInputRequest));
-    DeletePort(mInputPort);
-    DeleteMsgPort(mDbufPort);
-    DeleteMsgPort(mUserPort);
+    delete sInstance;
+    sInstance = nullptr;
 }
 
 ULONG Renderer::addRenderer(trost::Function<void(Context*)>&& handler)

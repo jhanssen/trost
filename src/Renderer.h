@@ -4,18 +4,18 @@
 #include "Function.h"
 #include "Vector.h"
 #include <clib/intuition_protos.h>
-#include <devices/inputevent.h>
 
 namespace trost {
 
 class Renderer
 {
 public:
-    static bool initialize(const Graphics* graphics);
+    static bool initialize();
+    static void cleanup();
+
     static Renderer* instance();
 
     void render();
-    void cleanup();
 
     struct Context
     {
@@ -24,10 +24,14 @@ public:
     ULONG addRenderer(trost::Function<void(Context*)>&& handler);
     void removeRenderer(ULONG id);
 
+    bool isWaiting() const;
+    void processDbuf();
+
+    const Graphics* graphics() const;
+    UBYTE sigBit() const;
+
 private:
     Renderer() = default;
-
-    bool initialize();
 
 private:
     Graphics mGraphics;
@@ -35,9 +39,6 @@ private:
     RastPort mRastPorts[2];
     MsgPort* mDbufPort = nullptr;
     MsgPort* mUserPort = nullptr;
-    MsgPort* mInputPort = nullptr;
-    IORequest* mInputRequest = nullptr;
-    InputEvent mGameEvent;
 
     enum class RedrawStatus { Redraw, Swapin, Wait };
     RedrawStatus mStatus[2] = { RedrawStatus::Redraw, RedrawStatus::Redraw };

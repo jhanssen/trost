@@ -3,6 +3,8 @@
 #include "Graphics.h"
 #include "Function.h"
 #include "Rect.h"
+#include <clib/intuition_protos.h>
+#include <devices/inputevent.h>
 
 namespace trost {
 
@@ -18,10 +20,23 @@ public:
     ULONG addMouse(Function<void(IntuiMessage*)>&& handler);
     void removeHandler(ULONG id);
 
+    void processInput();
+
+    UBYTE sigBit() const;
+
 private:
     Input() = default;
 
     void initialize();
+
+private:
+    const Graphics* mGraphics = nullptr;
+
+    MsgPort* mInputPort = nullptr;
+    IORequest* mInputRequest = nullptr;
+    InputEvent mGameEvent;
+
+    static Input* sInstance;
 };
 
 struct KeyInput
