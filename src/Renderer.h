@@ -14,6 +14,7 @@ public:
     static Renderer* instance();
 
     void render();
+    void cleanup();
 
     struct Context
     {

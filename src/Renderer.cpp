@@ -96,6 +96,31 @@ void Renderer::render()
     }
 }
 
+static void StripIntuiMessages(Window* win)
+{
+    IntuiMessage* msg;
+    while ((msg = reinterpret_cast<IntuiMessage*>(GetMsg(win->UserPort))) != nullptr) {
+        ReplyMsg((struct Message*)msg);
+    }
+}
+
+void Renderer::cleanup()
+{
+    FreeScreenBuffer(mGraphics.screen, mBuffers[0]);
+    FreeScreenBuffer(mGraphics.screen, mBuffers[1]);
+
+    Forbid();
+
+    StripIntuiMessages(mGraphics.window);
+    mGraphics.window->UserPort = nullptr;
+    ModifyIDCMP(mGraphics.window, 0);
+
+    Permit();
+
+    DeleteMsgPort(mDbufPort);
+    DeleteMsgPort(mUserPort);
+}
+
 ULONG Renderer::addRenderer(trost::Function<void(Context*)>&& handler)
 {
     ULONG id = mNextId++;

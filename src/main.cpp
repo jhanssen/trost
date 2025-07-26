@@ -87,6 +87,8 @@ int main(int /*argc*/, char** /*argv*/)
     }
     */
 
+    renderer->cleanup();
+
     CloseWindow(graphics.window);
     CloseScreen(graphics.screen);
 
