@@ -5,8 +5,6 @@
 #include <clib/graphics_protos.h>
 #include <cstdio>
 
-#define MAX_INPUT 128
-
 int main(int /*argc*/, char** /*argv*/)
 {
     trost::App::initialize();

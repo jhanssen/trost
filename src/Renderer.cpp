@@ -185,10 +185,11 @@ void Renderer::cleanup()
     Permit();
 
     CloseWindow(that->mGraphics.window);
-    CloseScreen(that->mGraphics.screen);
 
     FreeScreenBuffer(that->mGraphics.screen, that->mBuffers[1]);
     FreeScreenBuffer(that->mGraphics.screen, that->mBuffers[0]);
+
+    CloseScreen(that->mGraphics.screen);
 
     DeleteMsgPort(that->mDbufPort);
     //DeleteMsgPort(that->mUserPort);
