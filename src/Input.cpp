@@ -1,5 +1,6 @@
 #include "Input.h"
 #include "Messages.h"
+#include "Renderer.h"
 #include <clib/keymap_protos.h>
 #include <clib/graphics_protos.h>
 #include <cstring>
@@ -15,19 +16,10 @@ bool acquireInput(const InputOptions& options, Input* input)
 
     static auto keymap = AskKeyMapDefault();
 
-    auto rp = options.graphics->window->RPort;
-
-    Move(rp, x, y);
-    if (options.message) {
-        auto messageLen = options.messageLength ? options.messageLength : strlen(options.message);
-        Text(rp, options.message, messageLen);
-        y += 20;
-    }
-
     auto messages = Messages::instance();
     bool success = false;
     bool done = false;
-    auto handlerId = messages->addHandler(IDCMP_RAWKEY, [&](IntuiMessage* msg) -> void {
+    auto messagesId = messages->addHandler(IDCMP_RAWKEY, [&](IntuiMessage* msg) -> void {
         auto code = msg->Code;
         auto qualifier = msg->Qualifier;
         if ((code & 0x80) == 0) {
@@ -44,10 +36,6 @@ bool acquireInput(const InputOptions& options, Input* input)
             case 0x41: // Backspace key
             case 0x46: // Delete key
                 pos--;
-                x -= 8;
-                SetAPen(rp, 0);  // Background color
-                RectFill(rp, x, y - 10, x + 7, y);  // Erase last char
-                SetAPen(rp, 1);
                 break;
             default:
                 ie.ie_Class = IECLASS_RAWKEY;
@@ -58,23 +46,39 @@ bool acquireInput(const InputOptions& options, Input* input)
                     char ch = output[0];
                     if (pos < sizeof(input->buffer) - 1 && ch >= 32 && ch <= 126) {
                         input->buffer[pos++] = ch;
-                        char str[2] = { ch, 0 };
-                        Move(rp, x, y);
-                        Text(rp, str, 1);
-                        x += 8;
                     }
                 } else {
-                    Move(rp, x, y);
-                    Text(rp, "map failed", 12);
+                    // map failed, bail out. should surface this somehow
+                    done = true;
                 }
             }
         }
     });
 
+    auto renderer = Renderer::instance();
+
+    auto rendererId = renderer->addRenderer([&](Renderer::Context* ctx) -> void {
+        auto rp = ctx->rastPort;
+
+        long cx = x, cy = y;
+        Move(rp, cx, cy);
+        if (options.message) {
+            auto messageLen = options.messageLength ? options.messageLength : strlen(options.message);
+            Text(rp, options.message, messageLen);
+            cy += 20;
+            Move(rp, cx, cy);
+        }
+        if (pos > 0) {
+            Text(rp, input->buffer, pos);
+        }
+    });
+
     while (!done) {
-        messages->processMessage(options.graphics);
+        renderer->render();
     }
-    messages->removeHandler(handlerId);
+
+    renderer->removeRenderer(rendererId);
+    messages->removeHandler(messagesId);
     return success;
 }
 }

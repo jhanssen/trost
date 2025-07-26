@@ -63,29 +63,23 @@ int main(int /*argc*/, char** /*argv*/)
     // set pen color to white
     SetRGB4(&(graphics.screen->ViewPort), 1, 15, 15, 15);
 
-    renderer->addRenderer([](trost::Renderer::Context* ctx) {
+    auto helloId = renderer->addRenderer([](trost::Renderer::Context* ctx) {
         const auto rp = ctx->rastPort;
 
         Move(rp, 10, 10);
         Text(rp, "Hello, World!", 13);
     });
 
-    for (int n = 0; n < 500; ++n) {
+    for (int n = 0; n < 10; ++n) {
         renderer->render();
     }
 
-    /*
-    auto rp = graphics.window->RPort;
-    SetAPen(rp, 1);
-    SetBPen(rp, 0);
+    renderer->removeRenderer(helloId);
 
     trost::Input input;
-    if (trost::acquireInput({ &graphics, { 50, 50, 0, 0 }, "Type something" }, &input)) {
-        Move(graphics.window->RPort, 50, 150);
-        Text(graphics.window->RPort, input.buffer, input.length);
-        Delay(600);
+    if (trost::acquireInput({ &graphics, { 10, 50, 0, 0 }, "Type something" }, &input)) {
+        printf("Input received: %s\n", input.buffer);
     }
-    */
 
     renderer->cleanup();
 

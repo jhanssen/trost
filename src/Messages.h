@@ -15,7 +15,8 @@ public:
     ULONG addHandler(ULONG clazz, trost::Function<void(IntuiMessage*)>&& handler);
     void removeHandler(ULONG id);
 
-    void processMessage(const Graphics* graphics);
+    void processMessages(const Graphics* graphics);
+    void processOneMessage(ULONG clazz, const Graphics* graphics);
 
 private:
     Messages() = default;

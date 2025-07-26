@@ -43,7 +43,7 @@ void Renderer::render()
 {
     // if there are no handlers, just process messages at refresh rate
     if (mHandlers.size() == 0) {
-        Messages::instance()->processMessage(&mGraphics);
+        Messages::instance()->processMessages(&mGraphics);
         WaitTOF();
         return;
     }
@@ -58,7 +58,7 @@ void Renderer::render()
             }
         }
         if (sigs & (1 << mUserPort->mp_SigBit)) {
-            Messages::instance()->processMessage(&mGraphics);
+            Messages::instance()->processMessages(&mGraphics);
         }
     }
 
