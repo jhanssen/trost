@@ -4,13 +4,14 @@
 #include "Function.h"
 #include "Vector.h"
 #include <clib/intuition_protos.h>
+#include <devices/inputevent.h>
 
 namespace trost {
 
 class Renderer
 {
 public:
-    static void initialize(const Graphics* graphics);
+    static bool initialize(const Graphics* graphics);
     static Renderer* instance();
 
     void render();
@@ -26,7 +27,7 @@ public:
 private:
     Renderer() = default;
 
-    void initialize();
+    bool initialize();
 
 private:
     Graphics mGraphics;
@@ -34,6 +35,9 @@ private:
     RastPort mRastPorts[2];
     MsgPort* mDbufPort = nullptr;
     MsgPort* mUserPort = nullptr;
+    MsgPort* mInputPort = nullptr;
+    IORequest* mInputRequest = nullptr;
+    InputEvent mGameEvent;
 
     enum class RedrawStatus { Redraw, Swapin, Wait };
     RedrawStatus mStatus[2] = { RedrawStatus::Redraw, RedrawStatus::Redraw };

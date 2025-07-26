@@ -6,7 +6,7 @@
 #include <cstring>
 
 namespace trost {
-bool acquireInput(const InputOptions& options, Input* input)
+bool acquireKeyInput(const KeyInputOptions& options, KeyInput* input)
 {
     InputEvent ie;
 

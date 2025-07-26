@@ -54,7 +54,12 @@ int main(int /*argc*/, char** /*argv*/)
         return 1;
     }
 
-    trost::Renderer::initialize(&graphics);
+    if (!trost::Renderer::initialize(&graphics)) {
+        printf("Failed to initialize renderer\n");
+        CloseWindow(graphics.window);
+        CloseScreen(graphics.screen);
+        return 1;
+    }
 
     auto renderer = trost::Renderer::instance();
 
@@ -70,14 +75,14 @@ int main(int /*argc*/, char** /*argv*/)
         Text(rp, "Hello, World!", 13);
     });
 
-    for (int n = 0; n < 10; ++n) {
+    for (int n = 0; n < 200; ++n) {
         renderer->render();
     }
 
     renderer->removeRenderer(helloId);
 
-    trost::Input input;
-    if (trost::acquireInput({ &graphics, { 10, 50, 0, 0 }, "Type something" }, &input)) {
+    trost::KeyInput input;
+    if (trost::acquireKeyInput({ &graphics, { 10, 50, 0, 0 }, "Type something" }, &input)) {
         printf("Input received: %s\n", input.buffer);
     }
 
