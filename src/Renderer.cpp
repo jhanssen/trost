@@ -106,7 +106,7 @@ static void StripIntuiMessages(Window* win)
 
 void Renderer::cleanup()
 {
-    FreeScreenBuffer(mGraphics.screen, mBuffers[0]);
+    //FreeScreenBuffer(mGraphics.screen, mBuffers[0]);
     FreeScreenBuffer(mGraphics.screen, mBuffers[1]);
 
     Forbid();
