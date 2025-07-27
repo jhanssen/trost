@@ -2,7 +2,9 @@
 
 #include "Graphics.h"
 #include "Function.h"
+#include "Vector.h"
 #include "Rect.h"
+#include "Flags.h"
 #include <clib/intuition_protos.h>
 #include <devices/inputevent.h>
 
@@ -16,9 +18,38 @@ public:
 
     static Input* instance();
 
-    ULONG addKeyboard(Function<void(IntuiMessage*)>&& handler);
-    ULONG addMouse(Function<void(IntuiMessage*)>&& handler);
-    void removeHandler(ULONG id);
+    enum class AddMode {
+        Normal,
+        Exclusive,
+    };
+
+    enum class JoyDirection {
+        None  = 0x0,
+        Left  = 0x1,
+        Right = 0x2,
+        Up    = 0x4,
+        Down  = 0x8,
+    };
+
+    enum class JoyButton {
+        None         = 0x0,
+        Button1Down  = 0x1,
+        Button1Up    = 0x2,
+        Button2Down  = 0x4,
+        Button2Up    = 0x8,
+    };
+
+    struct JoystickEvent
+    {
+        JoyDirection directions;
+        JoyButton buttons;
+    };
+
+    ULONG addKeyboard(Function<void(IntuiMessage*)>&& handler, AddMode mode = AddMode::Normal);
+    ULONG addJoystick(Function<void(JoystickEvent*)>&& handler, AddMode mode = AddMode::Normal);
+
+    void removeKeyboard(ULONG id);
+    void removeJoystick(ULONG id);
 
     void processInput();
 
@@ -35,6 +66,26 @@ private:
     MsgPort* mInputPort = nullptr;
     IORequest* mInputRequest = nullptr;
     InputEvent mGameEvent;
+    JoystickEvent mJoystickEvent;
+
+    struct KeyboardEntry
+    {
+        ULONG id;
+        trost::Function<void(IntuiMessage*)> handler;
+    };
+    Vector<KeyboardEntry> mKeyboards;
+    ULONG mExclusiveKeyboard = 0;
+
+    struct JoystickEntry
+    {
+        ULONG id;
+        trost::Function<void(JoystickEvent*)> handler;
+    };
+    Vector<JoystickEntry> mJoysticks;
+    ULONG mExclusiveJoystick = 0;
+
+    ULONG mNextKeyboardId = 0, mNextJoystickId = 0;
+    ULONG mMessageId = 0;
 
     static Input* sInstance;
 };
@@ -55,4 +106,16 @@ struct KeyInputOptions
 
 bool acquireKeyInput(const KeyInputOptions& options, KeyInput* input);
 
-}
+template<>
+struct EnableBitMaskOperators<Input::JoyDirection>
+{
+    static constexpr bool enable = true;
+};
+
+template<>
+struct EnableBitMaskOperators<Input::JoyButton>
+{
+    static constexpr bool enable = true;
+};
+
+} // namespace trost

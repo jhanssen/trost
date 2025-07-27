@@ -27,13 +27,13 @@ bool App::initialize()
     sInstance->mRenderSig = sInstance->mRenderer->sigBit();
     sInstance->mGraphics = sInstance->mRenderer->graphics();
 
-    Input::initialize(sInstance->mGraphics);
-    sInstance->mInput = Input::instance();
-    sInstance->mInputSig = sInstance->mInput->sigBit();
-
     Messages::initialize(sInstance->mGraphics);
     sInstance->mMessages = Messages::instance();
     sInstance->mMessageSig = sInstance->mMessages->sigBit();
+
+    Input::initialize(sInstance->mGraphics);
+    sInstance->mInput = Input::instance();
+    sInstance->mInputSig = sInstance->mInput->sigBit();
 
     return true;
 }

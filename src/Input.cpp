@@ -12,21 +12,18 @@
 
 extern "C" ExecBase *SysBase;
 
-enum JoyDirection {
-    Joy_None,
-    Joy_Left = 0x1,
-    Joy_Right = 0x2,
-    Joy_Up = 0x4,
-    Joy_Down = 0x8,
-};
+using namespace trost;
 
 // x -1 is left, 1 is right
 // y -1 is up,   1 is down
-static const BYTE joyDirectionLookup[3][3] = {
-    // y = -1     0,                 1 (up)
-    { Joy_Left  | Joy_Up, Joy_Left,  Joy_Left  | Joy_Down },  // x = -1
-    { Joy_Down,           Joy_None,  Joy_Up               },  // x =  0
-    { Joy_Right | Joy_Up, Joy_Right, Joy_Right | Joy_Down }   // x = +1
+
+using JoyDirection = Input::JoyDirection;
+
+static const JoyDirection joyDirectionLookup[3][3] = {
+    // y = -1                                 0,                   1 (up)
+    { JoyDirection::Left  | JoyDirection::Up, JoyDirection::Left,  JoyDirection::Left  | JoyDirection::Down },  // x = -1
+    { JoyDirection::Down,                     JoyDirection::None,  JoyDirection::Up                         },  // x =  0
+    { JoyDirection::Right | JoyDirection::Up, JoyDirection::Right, JoyDirection::Right | JoyDirection::Down }   // x = +1
 };
 
 // the following functions are lifted from https://wiki.amigaos.net/wiki/Gameport_Device
@@ -120,10 +117,10 @@ bool acquireKeyInput(const KeyInputOptions& options, KeyInput* input)
 
     static auto keymap = AskKeyMapDefault();
 
-    auto messages = Messages::instance();
+    auto inputInstance = Input::instance();
     bool success = false;
     bool done = false;
-    auto messagesId = messages->addHandler(IDCMP_RAWKEY, [&](IntuiMessage* msg) -> void {
+    auto inputId = inputInstance->addKeyboard([&](IntuiMessage* msg) -> void {
         auto code = msg->Code;
         auto qualifier = msg->Qualifier;
         if ((code & 0x80) == 0) {
@@ -153,11 +150,12 @@ bool acquireKeyInput(const KeyInputOptions& options, KeyInput* input)
                     }
                 } else {
                     // map failed, bail out. should surface this somehow
-                    done = true;
+                    //printf("Failed to map raw key: %d %d\n", code, qualifier);
+                    //done = true;
                 }
             }
         }
-    });
+    }, Input::AddMode::Exclusive);
 
     auto app = App::instance();
 
@@ -184,7 +182,7 @@ bool acquireKeyInput(const KeyInputOptions& options, KeyInput* input)
     }
 
     renderer->removeRenderer(rendererId);
-    messages->removeHandler(messagesId);
+    inputInstance->removeKeyboard(inputId);
     return true;
 }
 
@@ -222,6 +220,27 @@ void Input::initialize(const Graphics* graphics)
     sInstance->mInputPort = inputPort;
     sInstance->mInputRequest = inputRequest;
     send_read_request(&sInstance->mGameEvent, reinterpret_cast<IOStdReq*>(inputRequest));
+
+    auto messages = Messages::instance();
+    sInstance->mMessageId = messages->addHandler(IDCMP_RAWKEY, [that = sInstance](IntuiMessage* msg) -> void {
+        if (that->mExclusiveKeyboard) {
+            // find the exclusive handler
+            const auto sz = that->mKeyboards.size();
+            for (std::size_t i = 0; i < sz; ++i) {
+                if (that->mKeyboards[i].id == that->mExclusiveKeyboard) {
+                    that->mKeyboards[i].handler(msg);
+                    break;
+                }
+            }
+            return;
+        }
+
+        // call all handlers
+        const auto sz = that->mKeyboards.size();
+        for (std::size_t i = 0; i < sz; ++i) {
+            that->mKeyboards[i].handler(msg);
+        }
+    });
 }
 
 void Input::cleanup()
@@ -229,6 +248,8 @@ void Input::cleanup()
     if (!sInstance) {
         return;
     }
+
+    Messages::instance()->removeHandler(sInstance->mMessageId);
 
     auto that = sInstance;
     if (!CheckIO(reinterpret_cast<IORequest*>(that->mInputRequest))) {
@@ -253,23 +274,91 @@ Input* Input::instance()
     return sInstance;
 }
 
+ULONG Input::addKeyboard(Function<void(IntuiMessage*)>&& handler, AddMode mode)
+{
+    ULONG id = ++mNextKeyboardId;
+
+    if (mode == AddMode::Exclusive) {
+        if (mExclusiveKeyboard != 0) {
+            return 0;
+        }
+        mExclusiveKeyboard = id;
+    }
+
+    mKeyboards.push_back({ id, std::move(handler) });
+    return id;
+}
+
+ULONG Input::addJoystick(Function<void(JoystickEvent*)>&& handler, AddMode mode)
+{
+    ULONG id = ++mNextJoystickId;
+
+    if (mode == AddMode::Exclusive) {
+        if (mExclusiveJoystick != 0) {
+            return 0;
+        }
+        mExclusiveJoystick = id;
+    }
+
+    mJoysticks.push_back({ id, std::move(handler) });
+    return id;
+}
+
+void Input::removeKeyboard(ULONG id)
+{
+    const auto sz = mKeyboards.size();
+    for (std::size_t i = 0; i < sz; ++i) {
+        if (mKeyboards[i].id == id) {
+            mKeyboards.remove_at(i);
+
+            if (mExclusiveKeyboard == id) {
+                mExclusiveKeyboard = 0;
+            }
+
+            return;
+        }
+    }
+}
+
+void Input::removeJoystick(ULONG id)
+{
+    const auto sz = mJoysticks.size();
+    for (std::size_t i = 0; i < sz; ++i) {
+        if (mJoysticks[i].id == id) {
+            mJoysticks.remove_at(i);
+
+            if (mExclusiveJoystick == id) {
+                mExclusiveJoystick = 0;
+            }
+
+            return;
+        }
+    }
+}
+
 void Input::processInput()
 {
     struct Message *imsg;
     if ((imsg = GetMsg(mInputPort))) {
+        mJoystickEvent = { JoyDirection::None, JoyButton::None };
+
+        bool send = true;
         switch (mGameEvent.ie_Code) {
         case IECODE_LBUTTON:
             // fire button pressed
-            printf("Left button pressed\n");
+            mJoystickEvent.buttons |= JoyButton::Button1Down;
             break;
         case IECODE_LBUTTON | IECODE_UP_PREFIX:
             // fire button released
+            mJoystickEvent.buttons |= JoyButton::Button1Up;
             break;
         case IECODE_RBUTTON:
             // alt button pressed
+            mJoystickEvent.buttons |= JoyButton::Button2Down;
             break;
         case IECODE_RBUTTON | IECODE_UP_PREFIX:
             // alt button released
+            mJoystickEvent.buttons |= JoyButton::Button2Up;
             break;
         case IECODE_NOBUTTON: {
             // check for move
@@ -278,13 +367,33 @@ void Input::processInput()
             if (xmove == 0 && ymove == 0) {
                 // this might be a timeout
                 if (mGameEvent.ie_TimeStamp.tv_secs >= (UWORD)(SysBase->VBlankFrequency) * 10) {
+                    send = false;
                     break; // timeout, ignore
                 }
             }
-            auto dir = joyDirectionLookup[xmove + 1][ymove + 1];
-            printf("Joystick moved: x=%d, y=%d, direction=%d\n", xmove, ymove, dir);
+            mJoystickEvent.directions = joyDirectionLookup[xmove + 1][ymove + 1];
+            //printf("Joystick moved: x=%d, y=%d, direction=%d\n", xmove, ymove, static_cast<UBYTE>(dir));
 
             break; }
+        }
+
+        if (send) {
+            if (mExclusiveJoystick) {
+                // find the exclusive handler
+                const auto sz = mJoysticks.size();
+                for (std::size_t i = 0; i < sz; ++i) {
+                    if (mJoysticks[i].id == mExclusiveJoystick) {
+                        mJoysticks[i].handler(&mJoystickEvent);
+                        break;
+                    }
+                }
+            } else {
+                // call all handlers
+                const auto sz = mJoysticks.size();
+                for (std::size_t i = 0; i < sz; ++i) {
+                    mJoysticks[i].handler(&mJoystickEvent);
+                }
+            }
         }
     }
 
