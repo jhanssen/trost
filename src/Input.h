@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Graphics.h"
-#include "Function.h"
-#include "Vector.h"
+#include "util/Function.h"
+#include "util/Vector.h"
 #include "Rect.h"
-#include "Flags.h"
+#include "util/Flags.h"
 #include <clib/intuition_protos.h>
 #include <devices/inputevent.h>
 

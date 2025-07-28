@@ -85,6 +85,14 @@ public:
         ++mSize;
     }
 
+    void pop_back()
+    {
+        if (mSize > 0) {
+            --mSize;
+            mData[mSize].~T(); // Call destructor explicitly
+        }
+    }
+
     // Remove element at index
     void remove_at(std::size_t index)
     {
@@ -111,6 +119,26 @@ public:
     const T& operator[](std::size_t index) const
     {
         return mData[index];
+    }
+
+    T& front()
+    {
+        return mData[0];
+    }
+
+    const T& front() const
+    {
+        return mData[0];
+    }
+
+    T& back()
+    {
+        return mData[mSize - 1];
+    }
+
+    const T& back() const
+    {
+        return mData[mSize - 1];
     }
 
     // Getters

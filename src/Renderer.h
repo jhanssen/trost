@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Graphics.h"
-#include "Function.h"
-#include "Vector.h"
+#include "util/Function.h"
+#include "util/Vector.h"
 #include <clib/intuition_protos.h>
 
 namespace trost {
@@ -15,14 +15,21 @@ public:
 
     static Renderer* instance();
 
+    // renders the current stack of renderers
     void render();
 
+    // manages renderers
     struct Context
     {
         RastPort* rastPort;
     };
     ULONG addRenderer(trost::Function<void(Context*)>&& handler);
     void removeRenderer(ULONG id);
+
+    // adds a stack, this is a way to group renderers, only the
+    // top stack will be rendered
+    void pushStack();
+    void popStack();
 
     bool isWaiting() const;
     void processDbuf();
@@ -51,7 +58,11 @@ private:
         ULONG id;
         trost::Function<void(Context*)> handler;
     };
-    Vector<Entry> mHandlers;
+    struct Stack
+    {
+        Vector<Entry> entries;
+    };
+    Vector<Stack> mStacks;
     ULONG mNextId = 0;
 
     static Renderer* sInstance;

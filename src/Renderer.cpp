@@ -16,6 +16,7 @@ bool Renderer::initialize()
     }
 
     sInstance = new Renderer();
+    sInstance->mStacks.push_back(Stack {});
     auto graphics = &sInstance->mGraphics;
 
     graphics->screen = OpenScreenTags(NULL,
@@ -107,7 +108,8 @@ UBYTE Renderer::sigBit() const
 void Renderer::render()
 {
     // if there are no handlers or if there's nothing to do, just wait for a refresh
-    if (mHandlers.size() == 0 || mStatus[mDraw] == RedrawStatus::Wait) {
+    const auto& handlers = mStacks.back().entries;
+    if (handlers.size() == 0 || mStatus[mDraw] == RedrawStatus::Wait) {
         WaitTOF();
         return;
     }
@@ -122,9 +124,9 @@ void Renderer::render()
         SetAPen(context.rastPort, 1);
         SetBPen(context.rastPort, 0);
 
-        const auto sz = mHandlers.size();
+        const auto sz = handlers.size();
         for (std::size_t i = 0; i < sz; ++i) {
-            auto& entry = mHandlers[i];
+            auto& entry = handlers[i];
             entry.handler(&context);
         }
 
@@ -198,20 +200,34 @@ void Renderer::cleanup()
     sInstance = nullptr;
 }
 
+void Renderer::pushStack()
+{
+    mStacks.push_back(Stack{});
+}
+
+void Renderer::popStack()
+{
+    mStacks.pop_back();
+}
+
 ULONG Renderer::addRenderer(trost::Function<void(Context*)>&& handler)
 {
     ULONG id = mNextId++;
-    mHandlers.push_back({ id, std::move(handler) });
+    mStacks.back().entries.push_back({ id, std::move(handler) });
     return id;
 }
 
 void Renderer::removeRenderer(ULONG id)
 {
-    const auto sz = mHandlers.size();
-    for (std::size_t i = 0; i < sz; ++i) {
-        if (mHandlers[i].id == id) {
-            mHandlers.remove_at(i);
-            return;
+    auto stackIdx = mStacks.size();
+    while (stackIdx > 0) {
+        auto& handlers = mStacks[--stackIdx].entries;
+        const auto sz = handlers.size();
+        for (std::size_t i = 0; i < sz; ++i) {
+            if (handlers[i].id == id) {
+                handlers.remove_at(i);
+                return;
+            }
         }
     }
 }
